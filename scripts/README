@@ -1,0 +1,5 @@
+Der OrangepiPC api part.
+
+
+ffmpeg hat den gpio call zum betätigen des PTT inkludiert.
+close_ppt schließt dann in jedemfall wieder
