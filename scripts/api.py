@@ -7,6 +7,7 @@ import OPi.GPIO as GPIO
 import subprocess
 import psutil
 import Adafruit_ADS1x15
+import requests
 from datetime import datetime
 
 GPIO.setwarnings(False)
@@ -34,6 +35,20 @@ def handle_timeout():
       GPIO.output(40, 0)
     time.sleep(2)
 
+def voltage_notification():
+  global flag1
+  print("started handle_timeout background-process")
+  value = adc.get_last_result()
+  result = value *0.000626
+  if result <= 9.5 and result > 9.0 and flag1 is False:
+    flag1 = True
+    pushover(result)
+  elif result <= 9.0:
+    pushover(result)
+    command = "/usr/sbin/shutdown now"
+    process = subprocess.Popen([command], shell=True)
+  time.sleep(60*10)
+
 def ffmpeg():
   global times
   global started
@@ -44,13 +59,13 @@ def ffmpeg():
     if started == True:
       times -= 0.05
       if(times <= 0):
-        print("end ffmpeg transmit process")
+#        print("end ffmpeg transmit process")
         if pid != None:
           process.terminate()
           process.communicate()
           pid = None
         started = False
-      print(times)
+#      print(times)
     time.sleep(0.05)
 
 def callback(channel):
@@ -75,14 +90,18 @@ process = None
 pid = None
 times = 0
 started = False
+flag1 = False
 GPIO.add_event_detect(10, GPIO.FALLING, callback=callback, bouncetime=50)
 ffmpeg_thread = threading.Thread(target=ffmpeg, name="FFmpeg")   # starting ffmpeg bg process
 ffmpeg_thread.start()
 timeout_thread = threading.Thread(target=handle_timeout, name="handle_timeout") # starting handle_timeout bg process
 timeout_thread.start()
+voltage_thread = threading.Thread(target=voltage_notification, name="voltage_notification") # starting voltage_notification bg process
+voltage_thread.start()
 
-@app.before_request 
-def before_request_callback(): 
+
+@app.before_request
+def before_request_callback():
     global latest_ping
     latest_ping = datetime.now()
 
@@ -130,7 +149,7 @@ def end_():
     return "0"
 
 @app.route("/up")    # gets the channel from txt and adds a digit if its under 8
-def channel_up(): 
+def channel_up():
     GPIO.output(38, 1)
     time.sleep(0.1)
     GPIO.output(38, 0)
@@ -165,11 +184,18 @@ def get_channel():
 def set_channel(number):
     number += 1
     if number == 9:
-        number = 1 
+        number = 1
     f = open("/opt/scripts/channel.txt", "w")
     f.write(str(number))
     f.close()
     return number;
+
+def pushover(message):
+    key = '**********'
+    reciever = '****-***'
+    user = '************'
+    data = {'token' : key, 'user' : user, 'device' : reciever, 'title' : "Batteriespannung kritisch", 'message': 'Die Batteriespannung beträgt ' + str(message)+ 'V'}
+    requests.post("https://api.pushover.net/1/messages.json", data=data)
 
 if __name__ == "__main__":
     try:
